@@ -1,0 +1,103 @@
+import pandas as pd
+import numpy as np
+import re
+import nltk
+from nltk.corpus import stopwords
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+import matplotlib.pyplot as plt
+
+# Load the dataset
+data_path = "/content/sample_data/amazon Food Reviews 100k Dataset.csv"
+df = pd.read_csv(data_path)
+
+# Preprocessing function
+def preprocess_text(text):
+    text = text.lower()
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    words = nltk.word_tokenize(text)
+    stop_words = set(stopwords.words('english'))
+    words = [word for word in words if word not in stop_words]
+    return ' '.join(words)
+
+df['cleaned_reviews'] = df['Review'].apply(preprocess_text)
+
+# Apply label encoding
+label_encoder = LabelEncoder()
+df['label'] = np.where(df['Rating'] > 3, 'Positive', 'Negative')
+
+# Splitting the dataset
+X = df['cleaned_reviews']
+y = df['label']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Vectorization (using CountVectorizer)
+vectorizer = CountVectorizer(max_features=5000)
+X_train_vec = vectorizer.fit_transform(X_train)
+X_test_vec = vectorizer.transform(X_test)
+
+# Define classifiers
+classifiers = {
+    "Multinomial Naive Bayes": MultinomialNB(),
+    "Logistic Regression": LogisticRegression(),
+    "Support Vector Classifier": SVC(),
+    "Decision Tree Classifier": DecisionTreeClassifier(),
+    "Random Forest Classifier": RandomForestClassifier(),
+    "Gradient Boosting Classifier": GradientBoostingClassifier()
+}
+
+# Training and evaluation loop
+results = {}
+for name, classifier in classifiers.items():
+    classifier.fit(X_train_vec, y_train)
+    y_pred = classifier.predict(X_test_vec)
+    accuracy = accuracy_score(y_test, y_pred)
+    results[name] = {"accuracy": accuracy}
+
+# Plot training and testing accuracy
+plt.figure(figsize=(10, 6))
+plt.plot(results.keys(), [results[classifier]["accuracy"] for classifier in results], marker='o', label='Testing Accuracy')
+
+# Calculate and plot training accuracy
+train_results = {}
+for name, classifier in classifiers.items():
+    y_train_pred = classifier.predict(X_train_vec)
+    train_accuracy = accuracy_score(y_train, y_train_pred)
+    train_results[name] = {"accuracy": train_accuracy}
+
+plt.plot(train_results.keys(), [train_results[classifier]["accuracy"] for classifier in train_results], marker='o', label='Training Accuracy')
+
+plt.xlabel("Classifier")
+plt.ylabel("Accuracy")
+plt.title("Training and Testing Accuracy")
+plt.xticks(rotation=45)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+
+# Pie chart for review classification
+review_counts = df['label'].value_counts()
+plt.figure(figsize=(8, 8))
+plt.pie(review_counts, labels=review_counts.index, autopct='%1.1f%%', startangle=140, colors=['blue', 'orange'])
+plt.title("Review Classification Distribution")
+plt.axis('equal')
+plt.show()
+
+# Bar graph for review classification
+plt.figure(figsize=(8, 6))
+sns.countplot(data=df, x='label', palette=['blue', 'orange'])
+plt.title("Review Classification Distribution")
+plt.xlabel("Review Classification")
+plt.ylabel("Count")
+plt.xticks([0, 1], ['Negative', 'Positive'])
+plt.show()
+
