@@ -1,0 +1,80 @@
+library(tm)
+library(caret)
+library(e1071)
+library(randomForest)
+library(gbm)
+library(ggplot2)
+
+# Load the dataset
+data_path <- "/content/sample_data/amazon Food Reviews 100k Dataset.csv"
+df <- read.csv(data_path, stringsAsFactors = FALSE)
+
+# Preprocessing function
+preprocess_text <- function(text) {
+  text <- tolower(text)
+  text <- gsub("[^a-zA-Z\\s]", '', text)
+  words <- unlist(strsplit(text, "\\s+"))
+  stop_words <- stopwords("en")
+  words <- words[!words %in% stop_words]
+  return(paste(words, collapse = ' '))
+}
+
+df$cleaned_reviews <- sapply(df$Review, preprocess_text)
+
+# Apply label encoding
+df$label <- ifelse(df$Rating > 3, 'Positive', 'Negative')
+
+# Splitting the dataset
+set.seed(42)
+split <- createDataPartition(df$label, p = 0.8, list = FALSE)
+train <- df[split, ]
+test <- df[-split, ]
+
+# Vectorization (using Document Term Matrix)
+corpus <- Corpus(VectorSource(train$cleaned_reviews))
+dtm <- DocumentTermMatrix(corpus, control = list(maxWords = 5000))
+X_train <- as.matrix(dtm)
+y_train <- train$label
+
+corpus_test <- Corpus(VectorSource(test$cleaned_reviews))
+dtm_test <- DocumentTermMatrix(corpus_test, control = list(maxWords = 5000, dictionary = Terms(dtm)))
+X_test <- as.matrix(dtm_test)
+y_test <- test$label
+
+# Define classifiers
+classifiers <- list(
+  "Multinomial Naive Bayes" = naiveBayes(X_train, y_train),
+  "Support Vector Classifier" = svm(X_train, y_train),
+  "Decision Tree Classifier" = rpart::rpart(y_train ~ ., data = as.data.frame(X_train)),
+  "Random Forest Classifier" = randomForest(X_train, y_train),
+  "Gradient Boosting Classifier" = gbm(X_train, y_train, distribution = "bernoulli")
+)
+
+# Training and evaluation loop
+results <- list()
+for (name in names(classifiers)) {
+  classifier <- classifiers[[name]]
+  y_pred <- predict(classifier, X_test)
+  accuracy <- sum(y_pred == y_test) / length(y_test)
+  results[[name]] <- list(accuracy = accuracy)
+}
+
+# Plot training and testing accuracy
+classifiers_names <- names(results)
+testing_accuracies <- sapply(results, function(x) x$accuracy)
+training_accuracies <- sapply(classifiers_names, function(name) {
+  classifier <- classifiers[[name]]
+  y_train_pred <- predict(classifier, X_train)
+  sum(y_train_pred == y_train) / length(y_train)
+})
+
+plot(classifiers_names, testing_accuracies, type = 'o', col = 'blue', ylim = c(0, 1), xlab = 'Classifier', ylab = 'Accuracy', main = 'Training and Testing Accuracy')
+lines(classifiers_names, training_accuracies, type = 'o', col = 'red')
+legend('topright', legend = c('Testing Accuracy', 'Training Accuracy'), col = c('blue', 'red'), lty = 1:1, cex = 0.8)
+
+# Pie chart for review classification
+review_counts <- table(df$label)
+pie(review_counts, labels = names(review_counts), col = c('blue', 'orange'), main = 'Review Classification Distribution')
+
+# Bar graph for review classification
+barplot(review_counts, main = 'Review Classification Distribution', xlab = 'Review Classification', ylab = 'Count', col = c('blue', 'orange'), names.arg = c('Negative', 'Positive'))
